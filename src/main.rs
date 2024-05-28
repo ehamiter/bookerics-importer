@@ -3,6 +3,9 @@ use scraper::{Html, Selector};
 use std::fs::File;
 use std::io::Read;
 use structopt::StructOpt;
+use chrono::{DateTime, Utc, TimeZone};
+use serde::{Serialize, Deserialize};
+use serde_json;
 
 #[derive(StructOpt)]
 struct Cli {
@@ -15,13 +18,14 @@ struct Cli {
     output: std::path::PathBuf,
 }
 
-#[allow(dead_code)] // Description and tags are optional; populate in the future
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Bookmark {
     title: String,
     description: String,
     url: String,
-    tags: String,
+    tags: Vec<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
 fn main() {
@@ -41,17 +45,33 @@ fn main() {
 
 fn parse_bookmarks(contents: &str) -> Vec<Bookmark> {
     let document = Html::parse_document(contents);
-    let selector = Selector::parse("a").unwrap();
+    let link_selector = Selector::parse("dt > a").unwrap();
+    let desc_selector = Selector::parse("dd").unwrap();
     let mut bookmarks = Vec::new();
 
-    for element in document.select(&selector) {
-        if let Some(url) = element.value().attr("href") {
-            let title = element.text().collect::<Vec<_>>().concat();
+    for (link_element, desc_element) in document.select(&link_selector).zip(document.select(&desc_selector)) {
+        if let Some(url) = link_element.value().attr("href") {
+            let title = link_element.text().collect::<Vec<_>>().concat();
+            let description = desc_element.text().collect::<Vec<_>>().concat();
+            let tags = link_element
+                .value()
+                .attr("tags")
+                .unwrap_or("")
+                .split(',')
+                .map(String::from)
+                .collect::<Vec<_>>();
+            let add_date = link_element.value().attr("add_date").unwrap_or("0");
+            let timestamp = add_date.parse::<i64>().unwrap();
+            let created_at = Utc.timestamp_opt(timestamp, 0).single().expect("Invalid timestamp");
+            let updated_at = Utc::now();
+
             bookmarks.push(Bookmark {
                 title: title.trim().to_string(),
-                description: "".to_string(), // Initialize with empty string
+                description: description.trim().to_string(),
                 url: url.to_string(),
-                tags: "".to_string(), // Initialize with empty string
+                tags,
+                created_at,
+                updated_at,
             });
         }
     }
@@ -68,7 +88,9 @@ fn create_database(path: std::path::PathBuf, bookmarks: Vec<Bookmark>) {
             title TEXT NOT NULL,
             description TEXT,
             url TEXT NOT NULL,
-            tags TEXT
+            tags TEXT,
+            created_at TEXT,
+            updated_at TEXT
         )",
         [],
     )
@@ -77,12 +99,20 @@ fn create_database(path: std::path::PathBuf, bookmarks: Vec<Bookmark>) {
     let tx = conn.transaction().expect("Failed to start transaction");
     {
         let mut stmt = tx
-            .prepare("INSERT INTO bookmarks (title, description, url, tags) VALUES (?1, ?2, ?3, ?4)")
+            .prepare("INSERT INTO bookmarks (title, description, url, tags, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
             .expect("Failed to prepare statement");
 
         for bookmark in bookmarks {
-            stmt.execute(params![bookmark.title, bookmark.description, bookmark.url, bookmark.tags])
-                .expect("Failed to insert bookmark");
+            let tags = serde_json::to_string(&bookmark.tags).expect("Failed to serialize tags");
+            stmt.execute(params![
+                bookmark.title, 
+                bookmark.description, 
+                bookmark.url, 
+                tags, 
+                bookmark.created_at.to_rfc3339(), 
+                bookmark.updated_at.to_rfc3339()
+            ])
+            .expect("Failed to insert bookmark");
         }
     }
     tx.commit().expect("Failed to commit transaction");
