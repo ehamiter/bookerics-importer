@@ -47,12 +47,19 @@ fn parse_bookmarks(contents: &str) -> Vec<Bookmark> {
     let document = Html::parse_document(contents);
     let link_selector = Selector::parse("dt > a").unwrap();
     let desc_selector = Selector::parse("dd").unwrap();
-    let mut bookmarks = Vec::new();
 
-    for (link_element, desc_element) in document.select(&link_selector).zip(document.select(&desc_selector)) {
+    let link_elements: Vec<_> = document.select(&link_selector).collect();
+    let desc_elements: Vec<_> = document.select(&desc_selector).collect();
+
+    let mut bookmarks = Vec::new();
+    let mut desc_iter = desc_elements.iter();
+
+    for link_element in link_elements {
         if let Some(url) = link_element.value().attr("href") {
             let title = link_element.text().collect::<Vec<_>>().concat();
-            let description = desc_element.text().collect::<Vec<_>>().concat();
+            let description = desc_iter.next().map_or(String::new(), |desc_element| {
+                desc_element.text().collect::<Vec<_>>().concat()
+            });
             let tags = link_element
                 .value()
                 .attr("tags")
