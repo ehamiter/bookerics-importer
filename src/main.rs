@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection};
-use scraper::{Html, Selector};
+use scraper::{Html, Selector, ElementRef};
 use std::fs::File;
 use std::io::Read;
 use structopt::StructOpt;
@@ -45,41 +45,47 @@ fn main() {
 
 fn parse_bookmarks(contents: &str) -> Vec<Bookmark> {
     let document = Html::parse_document(contents);
-    let link_selector = Selector::parse("dt > a").unwrap();
-    let desc_selector = Selector::parse("dd").unwrap();
-
-    let link_elements: Vec<_> = document.select(&link_selector).collect();
-    let desc_elements: Vec<_> = document.select(&desc_selector).collect();
+    let dt_selector = Selector::parse("dt").unwrap();
+    let a_selector = Selector::parse("a").unwrap();
+    // let dd_selector = Selector::parse("dd").unwrap();
 
     let mut bookmarks = Vec::new();
-    let mut desc_iter = desc_elements.iter();
 
-    for link_element in link_elements {
-        if let Some(url) = link_element.value().attr("href") {
-            let title = link_element.text().collect::<Vec<_>>().concat();
-            let description = desc_iter.next().map_or(String::new(), |desc_element| {
-                desc_element.text().collect::<Vec<_>>().concat()
-            });
-            let tags = link_element
-                .value()
-                .attr("tags")
-                .unwrap_or("")
-                .split(',')
-                .map(String::from)
-                .collect::<Vec<_>>();
-            let add_date = link_element.value().attr("add_date").unwrap_or("0");
-            let timestamp = add_date.parse::<i64>().unwrap();
-            let created_at = Utc.timestamp_opt(timestamp, 0).single().expect("Invalid timestamp");
-            let updated_at = Utc::now();
+    for dt_element in document.select(&dt_selector) {
+        if let Some(link_element) = dt_element.select(&a_selector).next() {
+            if let Some(url) = link_element.value().attr("href") {
+                let title = link_element.text().collect::<Vec<_>>().concat();
+                let mut description = String::new();
 
-            bookmarks.push(Bookmark {
-                title: title.trim().to_string(),
-                description: description.trim().to_string(),
-                url: url.to_string(),
-                tags,
-                created_at,
-                updated_at,
-            });
+                if let Some(next_sibling) = dt_element.next_sibling() {
+                    if let Some(next_dd) = ElementRef::wrap(next_sibling) {
+                        if next_dd.value().name() == "dd" {
+                            description = next_dd.text().collect::<Vec<_>>().concat();
+                        }
+                    }
+                }
+
+                let tags = link_element
+                    .value()
+                    .attr("tags")
+                    .unwrap_or("")
+                    .split(',')
+                    .map(String::from)
+                    .collect::<Vec<_>>();
+                let add_date = link_element.value().attr("add_date").unwrap_or("0");
+                let timestamp = add_date.parse::<i64>().unwrap();
+                let created_at = Utc.timestamp_opt(timestamp, 0).single().expect("Invalid timestamp");
+                let updated_at = Utc::now();
+
+                bookmarks.push(Bookmark {
+                    title: title.trim().to_string(),
+                    description: description.trim().to_string(),
+                    url: url.to_string(),
+                    tags,
+                    created_at,
+                    updated_at,
+                });
+            }
         }
     }
 
