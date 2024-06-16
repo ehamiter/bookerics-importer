@@ -2,6 +2,7 @@
 
 blazing fast [bookerics](https://github.com/ehamiter/bookerics) importer
 
+
 ## what?
 
 This takes in a `<!DOCTYPE NETSCAPE-Bookmark-file-1>`-compliant 
@@ -23,11 +24,14 @@ PRAGMA table_info(bookmarks);
 ]
 ```
 
+
 ## buildage
 
 ```
 ❯ cargo build --release
 ```
+executable will be built in `./target/relase/`. link it somewhere or move it somewhere on your PATH
+
 
 ## usage
 
