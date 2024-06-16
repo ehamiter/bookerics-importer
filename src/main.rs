@@ -23,6 +23,7 @@ struct Bookmark {
     title: String,
     description: String,
     url: String,
+    thumbnail_url: Option<String>,
     tags: Vec<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -47,7 +48,6 @@ fn parse_bookmarks(contents: &str) -> Vec<Bookmark> {
     let document = Html::parse_document(contents);
     let dt_selector = Selector::parse("dt").unwrap();
     let a_selector = Selector::parse("a").unwrap();
-    // let dd_selector = Selector::parse("dd").unwrap();
 
     let mut bookmarks = Vec::new();
 
@@ -73,14 +73,15 @@ fn parse_bookmarks(contents: &str) -> Vec<Bookmark> {
                     .map(String::from)
                     .collect::<Vec<_>>();
                 let add_date = link_element.value().attr("add_date").unwrap_or("0");
-                let timestamp = add_date.parse::<i64>().unwrap();
-                let created_at = Utc.timestamp_opt(timestamp, 0).single().expect("Invalid timestamp");
+                let timestamp = add_date.parse::<i64>().unwrap_or(0);
+                let created_at = Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(Utc::now);
                 let updated_at = Utc::now();
 
                 bookmarks.push(Bookmark {
                     title: title.trim().to_string(),
                     description: description.trim().to_string(),
                     url: url.to_string(),
+                    thumbnail_url: None,
                     tags,
                     created_at,
                     updated_at,
@@ -101,9 +102,10 @@ fn create_database(path: std::path::PathBuf, bookmarks: Vec<Bookmark>) {
             title TEXT NOT NULL,
             description TEXT,
             url TEXT NOT NULL,
+            thumbnail_url TEXT,
             tags TEXT,
-            created_at TEXT,
-            updated_at TEXT
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )",
         [],
     )
