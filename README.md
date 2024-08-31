@@ -1,6 +1,6 @@
 # bookerics-importer
 
-blazing fast [bookerics](https://github.com/ehamiter/bookerics) importer
+blazing fast [bookerics](https://bookerics.com) importer
 
 
 ## what?
